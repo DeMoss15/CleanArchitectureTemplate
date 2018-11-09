@@ -27,19 +27,8 @@ abstract class BaseRecyclerViewAdapter<T,
         holder.bindData(data[position])
     }
 
-    // Basic DiffUtil usage functions ==================================================================================
-    open fun addData(list: List<T>) {
-        dispatchData(data.toMutableList() + list.toMutableList())
-    }
-
-    open fun refresh(list: List<T>) {
-        data.clear()
-        notifyDataSetChanged()
-        dispatchData(list.toMutableList())
-    }
-
     // DiffUtil applying ===============================================================================================
-    private fun dispatchData(list: List<T>) {
+    fun dispatchData(list: List<T>) {
         with(DiffUtil.calculateDiff(diffUtilCallbackFactory(data, list))) {
             data.clear()
             data.addAll(list)
