@@ -27,7 +27,7 @@ fun <T> RecyclerView.setupSwipeToDelete(
         SwipeDirection.LEFT_AND_RIGHT -> swipeAction to swipeAction
     }
 
-    this.addItemTouchHelperWithCallback(SwipeItemInAnyDirectionCallback(actions.first, actions.second))
+    this.addItemTouchHelperWithCallback(SimpleSwipeItemCallback(actions.first, actions.second))
 }
 
 enum class SwipeDirection {
