@@ -25,4 +25,6 @@ fun <T> Maybe<T>.setDefaultSchedulers(): Maybe<T> = this.observeOn(AndroidSchedu
 // Other ===============================================================================================================
 
 fun <T> Observable<T>.updateValue(target: KMutableProperty<T>): Observable<T> =
-    this.map { it.apply { target.setter.call(it) } }
+    this.applyForEach { target.setter.call(it) }
+
+fun <T> Observable<T>.applyForEach(mapper: (T) -> Unit): Observable<T> = this.map { it.apply { mapper(it) } }

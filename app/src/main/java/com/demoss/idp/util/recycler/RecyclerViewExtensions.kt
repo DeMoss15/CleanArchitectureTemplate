@@ -9,15 +9,16 @@ fun RecyclerView.addItemTouchHelperWithCallback(callback: ItemTouchHelper.Simple
 }
 
 fun <T> RecyclerView.setupSwipeToDelete(
-    adapter: BaseRecyclerViewAdapter<T, *, *>,
+    adapter: BaseRecyclerViewAdapter<T, *>,
     swipeDirection: SwipeDirection,
     onItemDeleteAction: (T) -> Unit
 ) {
     val swipeAction: (Int) -> Unit = { itemPosition: Int ->
         adapter.apply {
-            onItemDeleteAction(data[itemPosition])
-            notifyItemRemoved(itemPosition)
-            data.removeAt(itemPosition)
+            onItemDeleteAction(differ.currentList[itemPosition])
+            val updatedList = differ.currentList.toMutableList()
+            updatedList.removeAt(itemPosition)
+            differ.submitList(updatedList)
         }
     }
 
