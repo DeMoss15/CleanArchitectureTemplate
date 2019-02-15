@@ -5,7 +5,7 @@ import io.reactivex.disposables.CompositeDisposable
 import io.reactivex.subjects.PublishSubject
 import java.lang.RuntimeException
 
-class ViewModelPaginator<T>(
+class ReactivePaginator<T>(
         requestFabric: (Observable<Int>) -> Observable<List<T>>,
         dispatchState: (Observable<ReactivePaginatorViewState>) -> Unit
 ) {
