@@ -4,23 +4,25 @@ import com.demoss.cat.util.pagination.ReactivePaginator
 import com.demoss.cat.util.pagination.ReactivePaginatorViewState
 import io.reactivex.Observable
 
-abstract class BasePaginatorViewModel<ItemType>(requestFabric: (Observable<Int>) -> Observable<List<ItemType>>) :
-    BaseViewModel<BasePaginatorUserCommand, ReactivePaginatorViewState>() {
+abstract class BasePaginatorViewModel<ItemType> : BaseViewModel<BasePaginatorAction, ReactivePaginatorViewState>() {
+
+    abstract val requestFabric: (Observable<Int>) -> Observable<List<ItemType>>
 
     protected val stateDispatcher: (Observable<ReactivePaginatorViewState>) -> Unit = {
         compositeDisposable.add(it.subscribe { nextState -> _states.value = nextState })
     }
-    protected val paginator: ReactivePaginator<ItemType> = ReactivePaginator(requestFabric, stateDispatcher)
+    protected lateinit var paginator: ReactivePaginator<ItemType>
 
-    override fun subscribeToUserCommands(commands: Observable<BasePaginatorUserCommand>) {
-        super.subscribeToUserCommands(commands)
-        commands.doOnDispose { compositeDisposable.clear() }.subscribe()
+    override fun subscribeToActions(action: Observable<BasePaginatorAction>) {
+        super.subscribeToActions(action)
+        paginator = ReactivePaginator(requestFabric, stateDispatcher)
+        action.doOnDispose { compositeDisposable.clear() }.subscribe()
     }
 
-    override fun dispatchUserCommand(command: BasePaginatorUserCommand): Unit = when (command) {
-        RESTART -> paginator.restart()
-        REFRESH -> paginator.refresh()
-        LOAD_NEXT_PAGE -> paginator.loadNewPage()
+    override fun dispatchAction(action: BasePaginatorAction): Unit = when (action) {
+        ACTION_RESTART -> paginator.restart()
+        ACTION_ -> paginator.refresh()
+        ACTION_LOAD_NEXT_PAGE -> paginator.loadNewPage()
     }
 
     override fun onCleared() {

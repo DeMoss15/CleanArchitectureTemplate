@@ -6,7 +6,7 @@ import androidx.lifecycle.ViewModel
 import io.reactivex.Observable
 import io.reactivex.disposables.CompositeDisposable
 
-abstract class BaseViewModel<UserCommand, State> : ViewModel() {
+abstract class BaseViewModel<Action, State> : ViewModel() {
 
     protected val compositeDisposable: CompositeDisposable = CompositeDisposable()
     // for view state changing
@@ -14,9 +14,13 @@ abstract class BaseViewModel<UserCommand, State> : ViewModel() {
     // accessible for view data
     val states: LiveData<State> get() = _states
 
-    open fun subscribeToUserCommands(commands: Observable<UserCommand>) {
-        compositeDisposable.add(commands.subscribe { dispatchUserCommand(it) })
+    open fun subscribeToActions(action: Observable<Action>) {
+        compositeDisposable.add(action.subscribe { dispatchAction(it) })
     }
 
-    protected abstract fun dispatchUserCommand(command: UserCommand)
+    open fun release() {
+        compositeDisposable.dispose()
+    }
+
+    protected abstract fun dispatchAction(action: Action)
 }
