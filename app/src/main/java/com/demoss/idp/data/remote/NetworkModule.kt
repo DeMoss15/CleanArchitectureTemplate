@@ -1,7 +1,7 @@
 package com.demoss.idp.data.remote
 
 import com.demoss.idp.Constants
-import com.jakewharton.retrofit2.adapter.rxjava2.RxJava2CallAdapterFactory
+import com.jakewharton.retrofit2.adapter.kotlin.coroutines.CoroutineCallAdapterFactory
 import okhttp3.OkHttpClient
 import org.koin.dsl.module.module
 import retrofit2.Retrofit
@@ -14,7 +14,7 @@ val networkModule = module {
         Retrofit.Builder().apply {
             baseUrl(Constants.BASE_URL)
             addConverterFactory(GsonConverterFactory.create())
-            addCallAdapterFactory(RxJava2CallAdapterFactory.create())
+            addCallAdapterFactory(CoroutineCallAdapterFactory())
             client(get())
         }.build()
     }

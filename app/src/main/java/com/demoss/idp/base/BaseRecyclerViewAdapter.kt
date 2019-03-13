@@ -1,4 +1,4 @@
-package com.demoss.idp.base
+package com.demoss.newsline.base
 
 import android.view.LayoutInflater
 import android.view.View

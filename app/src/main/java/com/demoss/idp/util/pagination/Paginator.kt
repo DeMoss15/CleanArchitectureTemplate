@@ -1,29 +1,41 @@
 package com.demoss.idp.util.pagination
 
-import io.reactivex.Single
-import io.reactivex.disposables.Disposable
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
+import kotlinx.coroutines.*
 
 class Paginator<T>(
-    private val requestFactory: (Int) -> Single<List<T>>,
-    private val viewController: ViewController<T>
+    private val scope: CoroutineScope,
+    private val requestFabric: suspend (Int) -> List<T>
 ) {
 
-    interface ViewController<T> {
-        fun showEmptyProgress(show: Boolean)
-        fun showEmptyError(show: Boolean, error: Throwable? = null)
-        fun showEmptyView(show: Boolean)
-        fun showData(show: Boolean, data: List<T> = emptyList())
-        fun showErrorMessage(error: Throwable)
-        fun showRefreshProgress(show: Boolean)
-        fun showPageProgress(show: Boolean)
+    companion object {
+        const val FIRST_PAGE = 0
     }
 
-    private val FIRST_PAGE = 1
-
-    private var currentState: State<T> = EMPTY()
-    private var currentPage = 0
-    private val currentData = mutableListOf<T>()
-    private var disposable: Disposable? = null
+    val viewStatesLiveData: LiveData<PaginatorViewState<T>>
+        get() = _viewStateLiveData
+    private val _viewStateLiveData: MutableLiveData<PaginatorViewState<T>> = MutableLiveData()
+    private val currentData: MutableList<T> = mutableListOf()
+    private var currentState: LoaderState<T> = LOADER_EMPTY()
+        set(value) {
+            _viewStateLiveData.postValue(
+                when (value) {
+                    is LOADER_EMPTY -> EMPTY()
+                    is LOADER_EMPTY_DATA -> EMPTY_DATA()
+                    is LOADER_EMPTY_ERROR -> EMPTY_ERROR()
+                    is LOADER_EMPTY_PROGRESS -> EMPTY_PROGRESS()
+                    is LOADER_DATA -> DATA(currentData.toMutableList())
+                    is LOADER_ALL_DATA -> LAST_PAGE(currentData)
+                    is LOADER_PAGE_PROGRESS -> PAGE_PROGRESS()
+                    is LOADER_REFRESH -> REFRESH()
+                    is LOADER_RELEASED -> RELEASED()
+                    else -> throw RuntimeException("undefined loader class")
+                }
+            )
+            field = value
+        }
+    private var currentPage: Int = 0
 
     fun restart() {
         currentState.restart()
@@ -41,16 +53,17 @@ class Paginator<T>(
         currentState.release()
     }
 
-    private fun loadPage(page: Int) {
-        disposable?.dispose()
-        disposable = requestFactory.invoke(page)
-            .subscribe(
-                { currentState.newData(it) },
-                { currentState.fail(it) }
-            )
+    // For usage in LoaderStates
+    private fun loadPageNumber(pageNumber: Int) {
+        scope.launch(CoroutineExceptionHandler { _, exception ->
+            exception.printStackTrace()
+            currentState.fail(exception)
+        }) {
+            currentState.newData(requestFabric(pageNumber))
+        }
     }
 
-    private interface State<T> {
+    private interface LoaderState<T> {
         fun restart() {}
         fun refresh() {}
         fun loadNewPage() {}
@@ -59,259 +72,177 @@ class Paginator<T>(
         fun fail(error: Throwable) {}
     }
 
-    private inner class EMPTY : State<T> {
+    private inner class LOADER_EMPTY : LoaderState<T> {
 
         override fun refresh() {
-            currentState = EMPTY_PROGRESS()
-            viewController.showEmptyProgress(true)
-            loadPage(FIRST_PAGE)
+            currentState = LOADER_EMPTY_PROGRESS()
+            loadPageNumber(FIRST_PAGE)
         }
 
         override fun release() {
-            currentState = RELEASED()
+            currentState = LOADER_RELEASED()
         }
     }
 
-    private inner class EMPTY_PROGRESS : State<T> {
+    private inner class LOADER_EMPTY_PROGRESS : LoaderState<T> {
 
         override fun restart() {
-            loadPage(FIRST_PAGE)
+            loadPageNumber(FIRST_PAGE)
         }
 
         override fun newData(data: List<T>) {
-            if (data.isNotEmpty()) {
-                currentState = DATA()
-                currentData.apply {
-                    clear()
-                    addAll(data)
-                }
-                currentPage = FIRST_PAGE
-                viewController.apply {
-                    showData(true, currentData)
-                    showEmptyProgress(false)
-                }
-            } else {
-                currentState = EMPTY_DATA()
-                viewController.apply {
-                    showEmptyProgress(false)
-                    showEmptyView(true)
-                }
+            currentData.apply {
+                clear()
+                addAll(data)
             }
+            currentPage = FIRST_PAGE
+
+            currentState = if (data.isNotEmpty()) LOADER_DATA()
+            else LOADER_EMPTY_DATA()
         }
 
         override fun fail(error: Throwable) {
-            currentState = EMPTY_ERROR()
-            viewController.apply {
-                showEmptyProgress(false)
-                showEmptyError(true, error)
-            }
+            currentState = LOADER_EMPTY_ERROR()
         }
 
         override fun release() {
-            currentState = RELEASED()
+            currentState = LOADER_RELEASED()
         }
     }
 
-    private inner class EMPTY_ERROR : State<T> {
+    private inner class LOADER_EMPTY_ERROR : LoaderState<T> {
 
         override fun restart() {
-            currentState = EMPTY_PROGRESS()
-            viewController.apply {
-                showEmptyError(false)
-                showEmptyProgress(true)
-            }
-            loadPage(FIRST_PAGE)
+            currentState = LOADER_EMPTY_PROGRESS()
+            loadPageNumber(FIRST_PAGE)
         }
 
         override fun refresh() {
-            currentState = EMPTY_PROGRESS()
-            viewController.apply {
-                showEmptyError(false)
-                showEmptyProgress(true)
-            }
-            loadPage(FIRST_PAGE)
+            currentState = LOADER_EMPTY_PROGRESS()
+            loadPageNumber(FIRST_PAGE)
         }
 
         override fun release() {
-            currentState = RELEASED()
+            currentState = LOADER_RELEASED()
         }
     }
 
-    private inner class EMPTY_DATA : State<T> {
+    private inner class LOADER_EMPTY_DATA : LoaderState<T> {
 
         override fun restart() {
-            currentState = EMPTY_PROGRESS()
-            viewController.apply {
-                showEmptyView(false)
-                showEmptyProgress(true)
-            }
-            loadPage(FIRST_PAGE)
+            currentState = LOADER_EMPTY_PROGRESS()
+            loadPageNumber(FIRST_PAGE)
         }
 
         override fun refresh() {
-            currentState = EMPTY_PROGRESS()
-            viewController.apply {
-                showEmptyView(false)
-                showEmptyProgress(true)
-            }
-            loadPage(FIRST_PAGE)
+            currentState = LOADER_EMPTY_PROGRESS()
+            loadPageNumber(FIRST_PAGE)
         }
 
         override fun release() {
-            currentState = RELEASED()
+            currentState = LOADER_RELEASED()
         }
     }
 
-    private inner class DATA : State<T> {
+    private inner class LOADER_DATA : LoaderState<T> {
 
         override fun restart() {
-            currentState = EMPTY_PROGRESS()
-            viewController.apply {
-                showData(false)
-                showEmptyProgress(true)
-            }
-            loadPage(FIRST_PAGE)
+            currentState = LOADER_EMPTY_PROGRESS()
+            loadPageNumber(FIRST_PAGE)
         }
 
         override fun refresh() {
-            currentState = REFRESH()
-            viewController.showRefreshProgress(true)
-            loadPage(FIRST_PAGE)
+            currentState = LOADER_REFRESH()
+            loadPageNumber(FIRST_PAGE)
         }
 
         override fun loadNewPage() {
-            currentState = PAGE_PROGRESS()
-            viewController.showPageProgress(true)
-            loadPage(currentPage + 1)
+            currentState = LOADER_PAGE_PROGRESS()
+            loadPageNumber(++currentPage)
         }
 
         override fun release() {
-            currentState = RELEASED()
+            currentState = LOADER_RELEASED()
         }
     }
 
-    private inner class REFRESH : State<T> {
+    private inner class LOADER_REFRESH : LoaderState<T> {
 
         override fun restart() {
-            currentState = EMPTY_PROGRESS()
-            viewController.apply {
-                showData(false)
-                showRefreshProgress(false)
-                showEmptyProgress(true)
-            }
-            loadPage(FIRST_PAGE)
+            currentState = LOADER_EMPTY_PROGRESS()
+            loadPageNumber(FIRST_PAGE)
         }
 
         override fun newData(data: List<T>) {
             if (data.isNotEmpty()) {
-                currentState = DATA()
                 currentData.apply {
                     clear()
                     addAll(data)
                 }
                 currentPage = FIRST_PAGE
-                viewController.apply {
-                    showRefreshProgress(false)
-                    showData(true, currentData)
-                }
+                currentState = LOADER_DATA()
             } else {
-                currentState = EMPTY_DATA()
                 currentData.clear()
-                viewController.apply {
-                    showData(false)
-                    showRefreshProgress(false)
-                    showEmptyView(true)
-                }
+                currentState = LOADER_EMPTY_DATA()
             }
         }
 
         override fun fail(error: Throwable) {
-            currentState = DATA()
-            viewController.apply {
-                showRefreshProgress(false)
-                showErrorMessage(error)
-            }
+            currentState = LOADER_DATA()
         }
 
         override fun release() {
-            currentState = RELEASED()
+            currentState = LOADER_RELEASED()
         }
     }
 
-    private inner class PAGE_PROGRESS : State<T> {
+    private inner class LOADER_PAGE_PROGRESS : LoaderState<T> {
 
         override fun restart() {
-            currentState = EMPTY_PROGRESS()
-            viewController.apply {
-                showData(false)
-                showPageProgress(false)
-                showEmptyProgress(true)
-            }
-            loadPage(FIRST_PAGE)
+            currentState = LOADER_EMPTY_PROGRESS()
+            loadPageNumber(FIRST_PAGE)
         }
 
         override fun newData(data: List<T>) {
-            if (data.isNotEmpty()) {
-                currentState = DATA()
-                currentData.addAll(data)
-                currentPage++
-                viewController.apply {
-                    showPageProgress(false)
-                    showData(true, currentData)
-                }
-            } else {
-                currentState = ALL_DATA()
-                viewController.showPageProgress(false)
-            }
+            currentData.addAll(data)
+            currentState = if (data.isNotEmpty()) LOADER_DATA()
+            else LOADER_ALL_DATA()
         }
 
         override fun refresh() {
-            currentState = REFRESH()
-            viewController.apply {
-                showPageProgress(false)
-                showRefreshProgress(true)
-            }
-            loadPage(FIRST_PAGE)
+            currentState = LOADER_REFRESH()
+            loadPageNumber(FIRST_PAGE)
         }
 
         override fun fail(error: Throwable) {
-            currentState = DATA()
-            viewController.apply {
-                showPageProgress(false)
-                showErrorMessage(error)
-            }
+            currentState = LOADER_DATA()
         }
 
         override fun release() {
-            currentState = RELEASED()
+            currentState = LOADER_RELEASED()
         }
     }
 
-    private inner class ALL_DATA : State<T> {
+    private inner class LOADER_ALL_DATA : LoaderState<T> {
 
         override fun restart() {
-            currentState = EMPTY_PROGRESS()
-            viewController.apply {
-                showData(false)
-                showEmptyProgress(true)
-            }
-            loadPage(FIRST_PAGE)
+            currentState = LOADER_EMPTY_PROGRESS()
+            loadPageNumber(FIRST_PAGE)
         }
 
         override fun refresh() {
-            currentState = REFRESH()
-            viewController.showRefreshProgress(true)
-            loadPage(FIRST_PAGE)
+            currentState = LOADER_REFRESH()
+            loadPageNumber(FIRST_PAGE)
         }
 
         override fun release() {
-            currentState = RELEASED()
+            currentState = LOADER_RELEASED()
         }
     }
 
-    private inner class RELEASED : State<T> {
+    private inner class LOADER_RELEASED : LoaderState<T> {
         init {
-            disposable?.dispose()
+            if (scope.isActive) scope.cancel()
         }
     }
 }
